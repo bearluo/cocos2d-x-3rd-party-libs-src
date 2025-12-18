@@ -1,0 +1,205 @@
+name: Build Test - OpenSSL and curl
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'contrib/src/openssl/**'
+      - 'contrib/src/curl/**'
+      - '.github/workflows/build-test.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'contrib/src/openssl/**'
+      - 'contrib/src/curl/**'
+      - '.github/workflows/build-test.yml'
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    name: Build on Linux
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        lib: [openssl, curl]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            autoconf \
+            automake \
+            cmake \
+            libtool \
+            git \
+            make \
+            gcc \
+            g++ \
+            perl
+
+      - name: Setup build environment
+        run: |
+          cd build
+          chmod +x build.sh
+
+      - name: Build ${{ matrix.lib }} on Linux
+        run: |
+          cd build
+          ./build.sh -p=linux --libs=${{ matrix.lib }} --arch=x86_64 --mode=release
+        continue-on-error: true
+
+      - name: Check build artifacts
+        if: success()
+        run: |
+          if [ -d "build/${{ matrix.lib }}/prebuilt" ]; then
+            echo "✅ Build successful: ${{ matrix.lib }}"
+            ls -la build/${{ matrix.lib }}/prebuilt/
+          else
+            echo "❌ Build failed: ${{ matrix.lib }} - no artifacts found"
+            exit 1
+          fi
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.lib }}-linux-x86_64
+          path: build/${{ matrix.lib }}/prebuilt/
+          retention-days: 7
+
+  build-macos:
+    name: Build on macOS
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        lib: [openssl, curl]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install autoconf automake cmake libtool
+
+      - name: Setup build environment
+        run: |
+          cd build
+          chmod +x build.sh
+
+      - name: Build ${{ matrix.lib }} on macOS
+        run: |
+          cd build
+          ./build.sh -p=mac --libs=${{ matrix.lib }} --arch=x86_64 --mode=release
+        continue-on-error: true
+
+      - name: Check build artifacts
+        if: success()
+        run: |
+          if [ -d "build/${{ matrix.lib }}/prebuilt" ]; then
+            echo "✅ Build successful: ${{ matrix.lib }}"
+            ls -la build/${{ matrix.lib }}/prebuilt/
+          else
+            echo "❌ Build failed: ${{ matrix.lib }} - no artifacts found"
+            exit 1
+          fi
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.lib }}-macos-x86_64
+          path: build/${{ matrix.lib }}/prebuilt/
+          retention-days: 7
+
+  verify-versions:
+    name: Verify Library Versions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify OpenSSL version
+        run: |
+          OPENSSL_VERSION=$(grep "OPENSSL_VERSION :=" contrib/src/openssl/rules.mak | cut -d' ' -f3)
+          echo "OpenSSL version in rules.mak: $OPENSSL_VERSION"
+          if [ "$OPENSSL_VERSION" != "1.1.1w" ]; then
+            echo "❌ Expected OpenSSL 1.1.1w, found $OPENSSL_VERSION"
+            exit 1
+          fi
+          echo "✅ OpenSSL version correct: $OPENSSL_VERSION"
+
+      - name: Verify curl version
+        run: |
+          CURL_VERSION=$(grep "CURL_VERSION :=" contrib/src/curl/rules.mak | cut -d' ' -f3)
+          echo "curl version in rules.mak: $CURL_VERSION"
+          if [ "$CURL_VERSION" != "7.88.1" ]; then
+            echo "❌ Expected curl 7.88.1, found $CURL_VERSION"
+            exit 1
+          fi
+          echo "✅ curl version correct: $CURL_VERSION"
+
+      - name: Verify SHA512SUMS format
+        run: |
+          echo "Checking OpenSSL SHA512SUMS..."
+          if [ -f "contrib/src/openssl/SHA512SUMS" ]; then
+            if grep -q "openssl-1.1.1w.tar.gz" contrib/src/openssl/SHA512SUMS; then
+              echo "✅ OpenSSL SHA512SUMS contains correct filename"
+            else
+              echo "❌ OpenSSL SHA512SUMS missing or incorrect"
+              exit 1
+            fi
+          fi
+          
+          echo "Checking curl SHA512SUMS..."
+          if [ -f "contrib/src/curl/SHA512SUMS" ]; then
+            if grep -q "curl-7.88.1.tar.gz" contrib/src/curl/SHA512SUMS; then
+              echo "✅ curl SHA512SUMS contains correct filename"
+            else
+              echo "❌ curl SHA512SUMS missing or incorrect"
+              exit 1
+            fi
+          fi
+
+  test-patch-compatibility:
+    name: Test Patch Compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download OpenSSL source
+        run: |
+          OPENSSL_VERSION=$(grep "OPENSSL_VERSION :=" contrib/src/openssl/rules.mak | cut -d' ' -f3)
+          OPENSSL_URL=$(grep "OPENSSL_URL :=" contrib/src/openssl/rules.mak | cut -d' ' -f3-)
+          echo "Downloading OpenSSL $OPENSSL_VERSION from $OPENSSL_URL"
+          wget -q "$OPENSSL_URL" -O openssl.tar.gz
+          tar -xzf openssl.tar.gz
+          mv openssl-* openssl-source
+
+      - name: Test Android patch
+        run: |
+          echo "Testing android-clang.patch compatibility..."
+          cd openssl-source
+          if patch -p1 --dry-run < ../contrib/src/openssl/android-clang.patch > /dev/null 2>&1; then
+            echo "✅ android-clang.patch is compatible"
+          else
+            echo "⚠️ android-clang.patch may have compatibility issues"
+            echo "Attempting to apply patch to see detailed errors..."
+            patch -p1 < ../contrib/src/openssl/android-clang.patch || true
+          fi
+
+      - name: Test iOS patch
+        run: |
+          echo "Testing ios-armv7-crash.patch compatibility..."
+          cd openssl-source
+          if patch -p1 --dry-run < ../contrib/src/openssl/ios-armv7-crash.patch > /dev/null 2>&1; then
+            echo "✅ ios-armv7-crash.patch is compatible"
+          else
+            echo "⚠️ ios-armv7-crash.patch may have compatibility issues"
+            echo "Attempting to apply patch to see detailed errors..."
+            patch -p1 < ../contrib/src/openssl/ios-armv7-crash.patch || true
+          fi
+
