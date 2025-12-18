@@ -354,6 +354,135 @@ jobs:
           
           echo "✅ Windows build configuration verification complete"
 
+      - name: Upload build artifacts (if any)
+        if: always()
+        shell: msys2 {0}
+        run: |
+          # Determine archive name based on library
+          if [ "${{ matrix.lib }}" == "openssl" ]; then
+            ARCHIVE_NAME="ssl"
+          elif [ "${{ matrix.lib }}" == "curl" ]; then
+            ARCHIVE_NAME="curl"
+          else
+            ARCHIVE_NAME="${{ matrix.lib }}"
+          fi
+          
+          # Check for any build artifacts (though Windows builds typically use Visual Studio)
+          # This step is mainly for documentation and verification files
+          echo "Checking for build artifacts..."
+          if [ -d "build/win32" ] || [ -d "build/windows" ]; then
+            echo "Found Windows build directory"
+            find build -name "*${{ matrix.lib }}*" -o -name "*$ARCHIVE_NAME*" 2>/dev/null | head -20 || true
+          fi
+          
+          # Create a verification artifact with build configuration info
+          mkdir -p win32-verification
+          echo "Library: ${{ matrix.lib }}" > win32-verification/build-info.txt
+          echo "Archive Name: $ARCHIVE_NAME" >> win32-verification/build-info.txt
+          echo "Platform: Windows Win32" >> win32-verification/build-info.txt
+          echo "Build Date: $(date)" >> win32-verification/build-info.txt
+          
+          if [ "${{ matrix.lib }}" == "openssl" ]; then
+            OPENSSL_VERSION=$(grep "OPENSSL_VERSION :=" contrib/src/openssl/rules.mak | cut -d' ' -f3)
+            echo "OpenSSL Version: $OPENSSL_VERSION" >> win32-verification/build-info.txt
+          elif [ "${{ matrix.lib }}" == "curl" ]; then
+            CURL_VERSION=$(grep "CURL_VERSION :=" contrib/src/curl/rules.mak | cut -d' ' -f3)
+            echo "curl Version: $CURL_VERSION" >> win32-verification/build-info.txt
+          fi
+
+      - name: Check for Windows build artifacts (DLL/LIB)
+        if: always()
+        shell: msys2 {0}
+        run: |
+          # Determine archive name based on library
+          if [ "${{ matrix.lib }}" == "openssl" ]; then
+            ARCHIVE_NAME="ssl"
+          elif [ "${{ matrix.lib }}" == "curl" ]; then
+            ARCHIVE_NAME="curl"
+          else
+            ARCHIVE_NAME="${{ matrix.lib }}"
+          fi
+          
+          echo "Checking for Windows build artifacts..."
+          
+          # Check for DLL files (if shared library was built)
+          if [ "${{ matrix.lib }}" == "curl" ]; then
+            echo "Looking for libcurl.dll..."
+            find . -name "libcurl*.dll" -o -name "curl*.dll" 2>/dev/null | head -10 || echo "No DLL files found (static build or not built)"
+            echo "Looking for libcurl.dll.a (MinGW import library)..."
+            find . -name "libcurl*.dll.a" -o -name "curl*.dll.a" 2>/dev/null | head -10 || echo "No MinGW import library found"
+            echo "Looking for libcurl.lib (Visual Studio library)..."
+            find . -name "libcurl*.lib" -o -name "curl*.lib" 2>/dev/null | head -10 || echo "No .lib files found"
+            echo "Looking for libcurl.a (static library)..."
+            find . -name "libcurl*.a" -o -name "curl*.a" 2>/dev/null | head -10 || echo "No .a files found"
+          fi
+          
+          # Check for static library files (.lib or .a)
+          if [ "${{ matrix.lib }}" == "openssl" ]; then
+            echo "Looking for OpenSSL libraries..."
+            find . -name "libssl*.a" -o -name "libcrypto*.a" -o -name "ssl*.lib" -o -name "crypto*.lib" -o -name "libssl*.lib" -o -name "libcrypto*.lib" 2>/dev/null | head -10 || echo "No library files found"
+          fi
+          
+          # Check contrib install directories
+          if [ -d "contrib/install-win32" ] || [ -d "contrib/install-windows" ] || [ -d "contrib/install-mingw" ]; then
+            echo "Found Windows install directory"
+            echo "Searching for all library files..."
+            find contrib/install-* -type f \( -name "*.dll" -o -name "*.lib" -o -name "*.a" -o -name "*.dll.a" \) 2>/dev/null | head -30 || true
+          fi
+          
+          # List directory structure for debugging
+          echo "Contrib install directories:"
+          ls -la contrib/install-* 2>/dev/null | head -20 || echo "No install directories found"
+
+      - name: Upload Windows verification artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.lib }}-windows-verification
+          path: win32-verification/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload Windows build artifacts (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.lib }}-windows-build
+          path: |
+            contrib/install-*/**/*.dll
+            contrib/install-*/**/*.lib
+            contrib/install-*/**/*.a
+            contrib/install-*/**/*.dll.a
+            contrib/install-*/**/include/
+          retention-days: 7
+          if-no-files-found: ignore
+          
+      - name: List Windows build artifacts summary
+        if: always()
+        shell: msys2 {0}
+        run: |
+          echo "=== Windows Build Artifacts Summary ==="
+          if [ "${{ matrix.lib }}" == "curl" ]; then
+            echo "Looking for curl build artifacts..."
+            echo ""
+            echo "DLL files:"
+            find . -name "libcurl*.dll" -o -name "curl*.dll" 2>/dev/null | head -5 || echo "  None found"
+            echo ""
+            echo "Visual Studio .lib files:"
+            find . -name "libcurl*.lib" -o -name "curl*.lib" 2>/dev/null | head -5 || echo "  None found"
+            echo ""
+            echo "MinGW .a files (static):"
+            find . -name "libcurl*.a" ! -name "*.dll.a" 2>/dev/null | head -5 || echo "  None found"
+            echo ""
+            echo "MinGW import libraries (.dll.a):"
+            find . -name "libcurl*.dll.a" 2>/dev/null | head -5 || echo "  None found"
+          elif [ "${{ matrix.lib }}" == "openssl" ]; then
+            echo "Looking for OpenSSL build artifacts..."
+            echo ""
+            echo "Library files (.lib, .a, .dll):"
+            find . -type f \( -name "libssl*" -o -name "libcrypto*" -o -name "ssl*" -o -name "crypto*" \) \( -name "*.lib" -o -name "*.a" -o -name "*.dll" \) 2>/dev/null | head -10 || echo "  None found"
+          fi
+
   test-patch-compatibility:
     name: Test Patch Compatibility
     runs-on: ubuntu-latest

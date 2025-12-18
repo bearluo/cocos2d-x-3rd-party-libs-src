@@ -25,6 +25,15 @@ ifdef HAVE_TVOS
 configure_option+=--disable-ntlm-wb
 endif
 
+ifdef HAVE_WIN32
+# Windows: Enable shared library (DLL) build
+# This will generate libcurl.dll and libcurl.dll.a (import library)
+# Note: --enable-shared will override --disable-shared from HOSTCONF
+configure_option+=--enable-shared
+# Optionally disable static build if only DLL is needed
+# configure_option+=--disable-static
+endif
+
 .curl: curl .zlib .openssl
 	$(RECONF)
 	cd $< && $(HOSTVARS_PIC) ./configure $(HOSTCONF) \

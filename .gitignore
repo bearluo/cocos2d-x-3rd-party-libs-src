@@ -58,3 +58,14 @@
 **/tarballs
 /build/android-toolchain*
 /contrib/android-*
+
+# Extracted source directories (temporary build artifacts)
+*-*/
+*-*.tar.gz
+*-*.tar.bz2
+*-*.tar.xz
+*-*.zip
+
+# Patch backup files
+*.orig
+*.rej

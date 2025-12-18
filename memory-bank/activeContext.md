@@ -27,9 +27,11 @@
 4. ✅ 已创建 GitHub Actions workflow 用于自动化测试
 5. ✅ 已修复 zlib macOS 兼容性问题（fdopen 宏定义补丁）
 6. ✅ 已添加 Windows Win32 支持到 GitHub Actions workflow
-7. ⏳ 需要推送到 GitHub 触发自动化测试
-8. ⏳ 需要验证补丁兼容性和配置文件兼容性（通过 CI 测试）
-9. ⏳ 需要测试构建（通过 CI 测试）
+7. ✅ 已修复 zlib macOS 补丁文件（补丁上下文已修正，已验证可成功应用）
+8. ✅ 已添加 Windows DLL 构建支持（curl 在 Windows 上会生成 libcurl.dll）
+9. ⏳ 需要推送到 GitHub 触发自动化测试
+10. ⏳ 需要验证补丁兼容性和配置文件兼容性（通过 CI 测试）
+11. ⏳ 需要测试构建（通过 CI 测试）
 
 ## PLAN 模式完成
 **计划状态**: 完整  

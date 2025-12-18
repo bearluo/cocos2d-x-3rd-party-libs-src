@@ -314,8 +314,12 @@
 
 **问题**: zlib 1.2.8 在 Xcode 16.4+ 和 macOS SDK 15.5+ 上编译失败
 - **错误**: `fdopen` 宏定义导致语法错误
+  - 错误信息: `fdopen(fd,mode) NULL` 在新版本 C 标准中导致语法错误
 - **修复**: 
   - 创建补丁 `contrib/src/zlib/macos-fdopen-fix.patch` 修复宏定义
+    - 将 `#define fdopen(fd,mode) NULL` 改为 `#define fdopen(fd,mode) ((FILE *)0)`
+    - 修复了补丁上下文，确保正确匹配源代码（第 125-133 行）
+    - ✅ 补丁已测试并验证可以成功应用
   - 添加编译标志 `-Wno-deprecated-non-prototype` 禁用 C23 警告
   - 更新 `contrib/src/zlib/rules.mak` 在 macOS 上应用补丁
 
@@ -325,11 +329,23 @@
 - 在 GitHub Actions workflow 中添加 Windows 构建测试
 - 使用 MSYS2/MinGW 环境进行兼容性测试
 - 验证 Windows 特定的构建配置
+- **添加 DLL 构建支持**: 在 Windows 上构建 curl 时启用共享库（DLL）
+
+**Windows DLL 构建配置**:
+- 在 `contrib/src/curl/rules.mak` 中添加了 `--enable-shared` 选项（当 `HAVE_WIN32` 定义时）
+- 这将生成以下文件：
+  - `libcurl.dll` - 动态链接库
+  - `libcurl.dll.a` - MinGW 导入库（用于链接 DLL）
+  - `libcurl.lib` - Visual Studio 库文件（静态库或导入库）
+  - `libcurl.a` - MinGW 静态库
+- 默认情况下，configure 会同时构建静态库和共享库（除非明确禁用静态库）
+- GitHub Actions workflow 已更新以检查并上传所有类型的库文件（.dll, .lib, .a, .dll.a）
 
 **注意**: 
 - Windows Win32 的生产构建通常需要在 Visual Studio 中手动设置项目（如 README 所述）
 - CI 中的 Windows 测试主要用于验证配置和源代码的正确性
 - 实际的生产构建应遵循 README.md 中的 Visual Studio 说明
+- 如果使用 MSYS2/MinGW 构建，现在会生成 DLL 文件
 
 ### 13. GitHub Actions 自动化测试
 
