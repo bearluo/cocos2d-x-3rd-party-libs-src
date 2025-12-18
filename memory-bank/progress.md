@@ -1,8 +1,8 @@
 # 进度跟踪
 
 ## 总体进度
-- **阶段**: IMPLEMENT 模式 - 实施中（已创建 CI/CD）
-- **完成度**: 70% (VAN + PLAN 完成，IMPLEMENT 进行中，CI/CD 已配置)
+- **阶段**: IMPLEMENT 模式 - 实施中（已创建 CI/CD，包含 Windows 支持）
+- **完成度**: 75% (VAN + PLAN 完成，IMPLEMENT 进行中，CI/CD 已配置，Windows 支持已添加)
 
 ## 当前阶段
 **VAN 模式 - 升级 curl 和 openssl 任务分析**

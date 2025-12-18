@@ -310,15 +310,37 @@
 
 **建议**: 由于大部分工作都是直接的版本更新和配置调整，不需要复杂的创意设计，建议直接转入 IMPLEMENT 模式。如果实施过程中遇到补丁或配置不兼容的问题，可以临时转入 CREATIVE 模式解决。
 
-### 11. GitHub Actions 自动化测试
+### 11. zlib macOS 兼容性修复
+
+**问题**: zlib 1.2.8 在 Xcode 16.4+ 和 macOS SDK 15.5+ 上编译失败
+- **错误**: `fdopen` 宏定义导致语法错误
+- **修复**: 
+  - 创建补丁 `contrib/src/zlib/macos-fdopen-fix.patch` 修复宏定义
+  - 添加编译标志 `-Wno-deprecated-non-prototype` 禁用 C23 警告
+  - 更新 `contrib/src/zlib/rules.mak` 在 macOS 上应用补丁
+
+### 12. Windows Win32 支持
+
+**添加内容**:
+- 在 GitHub Actions workflow 中添加 Windows 构建测试
+- 使用 MSYS2/MinGW 环境进行兼容性测试
+- 验证 Windows 特定的构建配置
+
+**注意**: 
+- Windows Win32 的生产构建通常需要在 Visual Studio 中手动设置项目（如 README 所述）
+- CI 中的 Windows 测试主要用于验证配置和源代码的正确性
+- 实际的生产构建应遵循 README.md 中的 Visual Studio 说明
+
+### 13. GitHub Actions 自动化测试
 
 已创建 `.github/workflows/build-test.yml` workflow，包含以下测试：
 
 1. **Linux 构建测试**: 在 Ubuntu 上测试 openssl 和 curl 的构建
 2. **macOS 构建测试**: 在 macOS 上测试 openssl 和 curl 的构建
-3. **版本验证**: 验证版本号是否正确更新
-4. **SHA512SUMS 验证**: 验证校验和文件格式
-5. **补丁兼容性测试**: 测试补丁在新版本上的兼容性
+3. **Windows 构建测试**: 在 Windows 上验证配置和源代码（使用 MSYS2/MinGW）
+4. **版本验证**: 验证版本号是否正确更新
+5. **SHA512SUMS 验证**: 验证校验和文件格式
+6. **补丁兼容性测试**: 测试补丁在新版本上的兼容性
 
 **使用方法**:
 - 推送到 GitHub 后，workflow 会自动运行
