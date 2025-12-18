@@ -173,11 +173,27 @@ jobs:
       - name: Download OpenSSL source
         run: |
           OPENSSL_VERSION=$(grep "OPENSSL_VERSION :=" contrib/src/openssl/rules.mak | cut -d' ' -f3)
-          OPENSSL_URL=$(grep "OPENSSL_URL :=" contrib/src/openssl/rules.mak | cut -d' ' -f3-)
+          # Build URL manually since rules.mak uses Makefile variable syntax $(OPENSSL_VERSION)
+          OPENSSL_URL="https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz"
           echo "Downloading OpenSSL $OPENSSL_VERSION from $OPENSSL_URL"
-          wget -q "$OPENSSL_URL" -O openssl.tar.gz
+          wget -q "$OPENSSL_URL" -O openssl.tar.gz || {
+            echo "Failed to download OpenSSL. Trying alternative URL..."
+            # Try alternative download location if primary fails
+            wget -q "https://github.com/openssl/openssl/archive/OpenSSL_${OPENSSL_VERSION//./_}.tar.gz" -O openssl.tar.gz || exit 1
+          }
           tar -xzf openssl.tar.gz
-          mv openssl-* openssl-source
+          # Handle different archive naming conventions
+          if [ -d "openssl-${OPENSSL_VERSION}" ]; then
+            mv openssl-${OPENSSL_VERSION} openssl-source
+          elif [ -d "openssl-OpenSSL_${OPENSSL_VERSION//./_}" ]; then
+            mv openssl-OpenSSL_${OPENSSL_VERSION//./_} openssl-source
+          else
+            mv openssl-* openssl-source 2>/dev/null || {
+              echo "Could not find extracted OpenSSL directory"
+              ls -la
+              exit 1
+            }
+          fi
 
       - name: Test Android patch
         run: |
