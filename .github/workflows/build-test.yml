@@ -48,17 +48,55 @@ jobs:
       - name: Build ${{ matrix.lib }} on Linux
         run: |
           cd build
-          ./build.sh -p=linux --libs=${{ matrix.lib }} --arch=x86_64 --mode=release
-        continue-on-error: true
+          # Set library archive alias mapping
+          if [ "${{ matrix.lib }}" == "openssl" ]; then
+            ARCHIVE_NAME="ssl"
+          elif [ "${{ matrix.lib }}" == "curl" ]; then
+            ARCHIVE_NAME="curl"
+          else
+            ARCHIVE_NAME="${{ matrix.lib }}"
+          fi
+          echo "Building ${{ matrix.lib }} (archive name: $ARCHIVE_NAME)"
+          ./build.sh -p=linux --libs=${{ matrix.lib }} --arch=x86_64 --mode=release 2>&1 | tee build.log
+          BUILD_EXIT_CODE=${PIPESTATUS[0]}
+          echo "Build exit code: $BUILD_EXIT_CODE"
+          if [ $BUILD_EXIT_CODE -ne 0 ]; then
+            echo "❌ Build failed with exit code $BUILD_EXIT_CODE"
+            echo "Last 50 lines of build log:"
+            tail -50 build.log || true
+            exit $BUILD_EXIT_CODE
+          fi
 
       - name: Check build artifacts
-        if: success()
         run: |
-          if [ -d "build/${{ matrix.lib }}/prebuilt" ]; then
-            echo "✅ Build successful: ${{ matrix.lib }}"
-            ls -la build/${{ matrix.lib }}/prebuilt/
+          # Determine archive name based on library
+          if [ "${{ matrix.lib }}" == "openssl" ]; then
+            ARCHIVE_NAME="ssl"
+          elif [ "${{ matrix.lib }}" == "curl" ]; then
+            ARCHIVE_NAME="curl"
           else
-            echo "❌ Build failed: ${{ matrix.lib }} - no artifacts found"
+            ARCHIVE_NAME="${{ matrix.lib }}"
+          fi
+          
+          # Check for build output directory
+          OUTPUT_DIR="build/linux/$ARCHIVE_NAME/prebuilt"
+          echo "Checking for output directory: $OUTPUT_DIR"
+          
+          if [ -d "$OUTPUT_DIR" ]; then
+            echo "✅ Build successful: ${{ matrix.lib }}"
+            echo "Output directory contents:"
+            find "$OUTPUT_DIR" -type f -name "*.a" | head -20
+            ls -la "$OUTPUT_DIR" || true
+          else
+            echo "❌ Build failed: ${{ matrix.lib }} - no artifacts found at $OUTPUT_DIR"
+            echo "Checking alternative locations..."
+            find build -name "*${{ matrix.lib }}*" -type d 2>/dev/null | head -10 || true
+            find build -name "*$ARCHIVE_NAME*" -type d 2>/dev/null | head -10 || true
+            echo "Build directory structure:"
+            ls -la build/ || true
+            if [ -d "build/linux" ]; then
+              ls -la build/linux/ || true
+            fi
             exit 1
           fi
 
@@ -67,7 +105,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.lib }}-linux-x86_64
-          path: build/${{ matrix.lib }}/prebuilt/
+          path: |
+            build/linux/${{ matrix.lib == 'openssl' && 'ssl' || matrix.lib }}/prebuilt/
+            build/linux/${{ matrix.lib == 'openssl' && 'ssl' || matrix.lib }}/include/
           retention-days: 7
 
   build-macos:
@@ -92,17 +132,55 @@ jobs:
       - name: Build ${{ matrix.lib }} on macOS
         run: |
           cd build
-          ./build.sh -p=mac --libs=${{ matrix.lib }} --arch=x86_64 --mode=release
-        continue-on-error: true
+          # Set library archive alias mapping
+          if [ "${{ matrix.lib }}" == "openssl" ]; then
+            ARCHIVE_NAME="ssl"
+          elif [ "${{ matrix.lib }}" == "curl" ]; then
+            ARCHIVE_NAME="curl"
+          else
+            ARCHIVE_NAME="${{ matrix.lib }}"
+          fi
+          echo "Building ${{ matrix.lib }} (archive name: $ARCHIVE_NAME)"
+          ./build.sh -p=mac --libs=${{ matrix.lib }} --arch=x86_64 --mode=release 2>&1 | tee build.log
+          BUILD_EXIT_CODE=${PIPESTATUS[0]}
+          echo "Build exit code: $BUILD_EXIT_CODE"
+          if [ $BUILD_EXIT_CODE -ne 0 ]; then
+            echo "❌ Build failed with exit code $BUILD_EXIT_CODE"
+            echo "Last 50 lines of build log:"
+            tail -50 build.log || true
+            exit $BUILD_EXIT_CODE
+          fi
 
       - name: Check build artifacts
-        if: success()
         run: |
-          if [ -d "build/${{ matrix.lib }}/prebuilt" ]; then
-            echo "✅ Build successful: ${{ matrix.lib }}"
-            ls -la build/${{ matrix.lib }}/prebuilt/
+          # Determine archive name based on library
+          if [ "${{ matrix.lib }}" == "openssl" ]; then
+            ARCHIVE_NAME="ssl"
+          elif [ "${{ matrix.lib }}" == "curl" ]; then
+            ARCHIVE_NAME="curl"
           else
-            echo "❌ Build failed: ${{ matrix.lib }} - no artifacts found"
+            ARCHIVE_NAME="${{ matrix.lib }}"
+          fi
+          
+          # Check for build output directory
+          OUTPUT_DIR="build/mac/$ARCHIVE_NAME/prebuilt"
+          echo "Checking for output directory: $OUTPUT_DIR"
+          
+          if [ -d "$OUTPUT_DIR" ]; then
+            echo "✅ Build successful: ${{ matrix.lib }}"
+            echo "Output directory contents:"
+            find "$OUTPUT_DIR" -type f -name "*.a" | head -20
+            ls -la "$OUTPUT_DIR" || true
+          else
+            echo "❌ Build failed: ${{ matrix.lib }} - no artifacts found at $OUTPUT_DIR"
+            echo "Checking alternative locations..."
+            find build -name "*${{ matrix.lib }}*" -type d 2>/dev/null | head -10 || true
+            find build -name "*$ARCHIVE_NAME*" -type d 2>/dev/null | head -10 || true
+            echo "Build directory structure:"
+            ls -la build/ || true
+            if [ -d "build/mac" ]; then
+              ls -la build/mac/ || true
+            fi
             exit 1
           fi
 
@@ -111,7 +189,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.lib }}-macos-x86_64
-          path: build/${{ matrix.lib }}/prebuilt/
+          path: |
+            build/mac/${{ matrix.lib == 'openssl' && 'ssl' || matrix.lib }}/prebuilt/
+            build/mac/${{ matrix.lib == 'openssl' && 'ssl' || matrix.lib }}/include/
           retention-days: 7
 
   verify-versions:
