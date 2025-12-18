@@ -1,0 +1,12 @@
+--- a/zutil.h
++++ b/zutil.h
+@@ -125,7 +125,7 @@
+ #  ifdef _LARGEFILE64_SOURCE
+ #    define fdopen64(fd,mode) NULL /* No fdopen64() */
+ #  endif
+-#        define fdopen(fd,mode) NULL /* No fdopen() */
++#        define fdopen(fd,mode) ((FILE *)0) /* No fdopen() */
+ #      endif
+ #    endif
+ #  endif
+

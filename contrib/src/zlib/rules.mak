@@ -17,6 +17,12 @@ ifdef HAVE_LINUX
 EX_ECFLAGS = -fPIC
 endif
 
+ifdef HAVE_MACOSX
+# Fix compatibility with Xcode 16.4+ and macOS SDK 15.5+
+# Disable C23 strict checks for deprecated function prototypes
+EX_ECFLAGS = -Wno-deprecated-non-prototype -Wno-error=deprecated-non-prototype
+endif
+
 ifdef HAVE_WIN32
 extra_makefile=-fwin32/Makefile.gcc
 endif
@@ -28,6 +34,9 @@ $(TARBALLS)/zlib-$(ZLIB_VERSION).tar.gz:
 
 zlib: zlib-$(ZLIB_VERSION).tar.gz .sum-zlib
 	$(UNPACK)
+ifdef HAVE_MACOSX
+	$(APPLY) $(SRC)/zlib/macos-fdopen-fix.patch
+endif
 	$(MOVE)
 
 .zlib: zlib
