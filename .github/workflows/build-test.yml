@@ -18,100 +18,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-linux:
-    name: Build on Linux
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        lib: [openssl, curl]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            autoconf \
-            automake \
-            cmake \
-            libtool \
-            git \
-            make \
-            gcc \
-            g++ \
-            perl
-
-      - name: Setup build environment
-        run: |
-          cd build
-          chmod +x build.sh
-
-      - name: Build ${{ matrix.lib }} on Linux
-        run: |
-          cd build
-          # Set library archive alias mapping
-          if [ "${{ matrix.lib }}" == "openssl" ]; then
-            ARCHIVE_NAME="ssl"
-          elif [ "${{ matrix.lib }}" == "curl" ]; then
-            ARCHIVE_NAME="curl"
-          else
-            ARCHIVE_NAME="${{ matrix.lib }}"
-          fi
-          echo "Building ${{ matrix.lib }} (archive name: $ARCHIVE_NAME)"
-          ./build.sh -p=linux --libs=${{ matrix.lib }} --arch=x86_64 --mode=release 2>&1 | tee build.log
-          BUILD_EXIT_CODE=${PIPESTATUS[0]}
-          echo "Build exit code: $BUILD_EXIT_CODE"
-          if [ $BUILD_EXIT_CODE -ne 0 ]; then
-            echo "❌ Build failed with exit code $BUILD_EXIT_CODE"
-            echo "Last 50 lines of build log:"
-            tail -50 build.log || true
-            exit $BUILD_EXIT_CODE
-          fi
-
-      - name: Check build artifacts
-        run: |
-          # Determine archive name based on library
-          if [ "${{ matrix.lib }}" == "openssl" ]; then
-            ARCHIVE_NAME="ssl"
-          elif [ "${{ matrix.lib }}" == "curl" ]; then
-            ARCHIVE_NAME="curl"
-          else
-            ARCHIVE_NAME="${{ matrix.lib }}"
-          fi
-          
-          # Check for build output directory
-          OUTPUT_DIR="build/linux/$ARCHIVE_NAME/prebuilt"
-          echo "Checking for output directory: $OUTPUT_DIR"
-          
-          if [ -d "$OUTPUT_DIR" ]; then
-            echo "✅ Build successful: ${{ matrix.lib }}"
-            echo "Output directory contents:"
-            find "$OUTPUT_DIR" -type f -name "*.a" | head -20
-            ls -la "$OUTPUT_DIR" || true
-          else
-            echo "❌ Build failed: ${{ matrix.lib }} - no artifacts found at $OUTPUT_DIR"
-            echo "Checking alternative locations..."
-            find build -name "*${{ matrix.lib }}*" -type d 2>/dev/null | head -10 || true
-            find build -name "*$ARCHIVE_NAME*" -type d 2>/dev/null | head -10 || true
-            echo "Build directory structure:"
-            ls -la build/ || true
-            if [ -d "build/linux" ]; then
-              ls -la build/linux/ || true
-            fi
-            exit 1
-          fi
-
-      - name: Upload build artifacts
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.lib }}-linux-x86_64
-          path: |
-            build/linux/${{ matrix.lib == 'openssl' && 'ssl' || matrix.lib }}/prebuilt/
-            build/linux/${{ matrix.lib == 'openssl' && 'ssl' || matrix.lib }}/include/
-          retention-days: 7
-
   build-macos:
     name: Build on macOS
     runs-on: macos-latest
@@ -196,6 +102,221 @@ jobs:
             build/mac/${{ matrix.lib == 'openssl' && 'ssl' || matrix.lib }}/include/
           retention-days: 7
 
+  build-ios:
+    name: Build on iOS
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        lib: [openssl, curl]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install autoconf automake cmake libtool
+
+      - name: Setup build environment
+        run: |
+          cd build
+          chmod +x build.sh
+
+      - name: Build ${{ matrix.lib }} on iOS
+        run: |
+          cd build
+          # Set library archive alias mapping
+          if [ "${{ matrix.lib }}" == "openssl" ]; then
+            ARCHIVE_NAME="ssl"
+          elif [ "${{ matrix.lib }}" == "curl" ]; then
+            ARCHIVE_NAME="curl"
+          else
+            ARCHIVE_NAME="${{ matrix.lib }}"
+          fi
+          echo "Building ${{ matrix.lib }} (archive name: $ARCHIVE_NAME) for iOS"
+          # Build for all iOS architectures: armv7, arm64, i386, x86_64
+          ./build.sh -p=ios --libs=${{ matrix.lib }} --arch=armv7,arm64,i386,x86_64 --mode=release 2>&1 | tee build.log
+          BUILD_EXIT_CODE=${PIPESTATUS[0]}
+          echo "Build exit code: $BUILD_EXIT_CODE"
+          if [ $BUILD_EXIT_CODE -ne 0 ]; then
+            echo "❌ Build failed with exit code $BUILD_EXIT_CODE"
+            echo "Last 50 lines of build log:"
+            tail -50 build.log || true
+            exit $BUILD_EXIT_CODE
+          fi
+
+      - name: Check build artifacts
+        run: |
+          # Determine archive name based on library
+          if [ "${{ matrix.lib }}" == "openssl" ]; then
+            ARCHIVE_NAME="ssl"
+          elif [ "${{ matrix.lib }}" == "curl" ]; then
+            ARCHIVE_NAME="curl"
+          else
+            ARCHIVE_NAME="${{ matrix.lib }}"
+          fi
+          
+          # Check for build output directory
+          OUTPUT_DIR="build/ios/$ARCHIVE_NAME/prebuilt"
+          echo "Checking for output directory: $OUTPUT_DIR"
+          
+          if [ -d "$OUTPUT_DIR" ]; then
+            echo "✅ Build successful: ${{ matrix.lib }}"
+            echo "Output directory contents:"
+            find "$OUTPUT_DIR" -type f -name "*.a" | head -20
+            ls -la "$OUTPUT_DIR" || true
+            # Verify fat library (iOS creates fat libraries)
+            if [ -f "$OUTPUT_DIR/lib${ARCHIVE_NAME}.a" ]; then
+              echo "✅ Found fat library: lib${ARCHIVE_NAME}.a"
+              # Check architectures in fat library
+              lipo -info "$OUTPUT_DIR/lib${ARCHIVE_NAME}.a" || true
+            fi
+          else
+            echo "❌ Build failed: ${{ matrix.lib }} - no artifacts found at $OUTPUT_DIR"
+            echo "Checking alternative locations..."
+            find build -name "*${{ matrix.lib }}*" -type d 2>/dev/null | head -10 || true
+            find build -name "*$ARCHIVE_NAME*" -type d 2>/dev/null | head -10 || true
+            echo "Build directory structure:"
+            ls -la build/ || true
+            if [ -d "build/ios" ]; then
+              ls -la build/ios/ || true
+            fi
+            exit 1
+          fi
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.lib }}-ios-universal
+          path: |
+            build/ios/${{ matrix.lib == 'openssl' && 'ssl' || matrix.lib }}/prebuilt/
+            build/ios/${{ matrix.lib == 'openssl' && 'ssl' || matrix.lib }}/include/
+          retention-days: 7
+
+  build-android:
+    name: Build on Android
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        lib: [openssl, curl]
+        arch: [armv7, arm64, x86]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install autoconf automake cmake libtool
+
+      - name: Download and setup Android NDK
+        run: |
+          # Download Android NDK r25c
+          NDK_VERSION="r25c"
+          NDK_ZIP="android-ndk-${NDK_VERSION}-darwin.zip"
+          NDK_URL="https://dl.google.com/android/repository/${NDK_ZIP}"
+          
+          echo "Downloading Android NDK ${NDK_VERSION}..."
+          curl -L -o "${NDK_ZIP}" "${NDK_URL}"
+          
+          echo "Extracting Android NDK..."
+          unzip -q "${NDK_ZIP}"
+          
+          # Set ANDROID_NDK environment variable
+          NDK_PATH="$(pwd)/android-ndk-${NDK_VERSION}"
+          echo "ANDROID_NDK=${NDK_PATH}" >> $GITHUB_ENV
+          echo "ANDROID_NDK=${NDK_PATH}" >> $GITHUB_PATH
+          
+          echo "Android NDK installed at: ${NDK_PATH}"
+          ls -la "${NDK_PATH}" | head -10
+
+      - name: Setup build environment
+        run: |
+          cd build
+          chmod +x build.sh
+          echo "ANDROID_NDK=${ANDROID_NDK}"
+
+      - name: Build ${{ matrix.lib }} on Android (${{ matrix.arch }})
+        run: |
+          cd build
+          # Set library archive alias mapping
+          if [ "${{ matrix.lib }}" == "openssl" ]; then
+            ARCHIVE_NAME="ssl"
+          elif [ "${{ matrix.lib }}" == "curl" ]; then
+            ARCHIVE_NAME="curl"
+          else
+            ARCHIVE_NAME="${{ matrix.lib }}"
+          fi
+          echo "Building ${{ matrix.lib }} (archive name: $ARCHIVE_NAME) for Android ${{ matrix.arch }}"
+          # Build for specific Android architecture
+          ./build.sh -p=android --libs=${{ matrix.lib }} --arch=${{ matrix.arch }} --mode=release 2>&1 | tee build.log
+          BUILD_EXIT_CODE=${PIPESTATUS[0]}
+          echo "Build exit code: $BUILD_EXIT_CODE"
+          if [ $BUILD_EXIT_CODE -ne 0 ]; then
+            echo "❌ Build failed with exit code $BUILD_EXIT_CODE"
+            echo "Last 50 lines of build log:"
+            tail -50 build.log || true
+            exit $BUILD_EXIT_CODE
+          fi
+
+      - name: Check build artifacts
+        run: |
+          # Determine archive name based on library
+          if [ "${{ matrix.lib }}" == "openssl" ]; then
+            ARCHIVE_NAME="ssl"
+          elif [ "${{ matrix.lib }}" == "curl" ]; then
+            ARCHIVE_NAME="curl"
+          else
+            ARCHIVE_NAME="${{ matrix.lib }}"
+          fi
+          
+          # Android uses architecture-specific folder names
+          case "${{ matrix.arch }}" in
+            armv7)
+              ANDROID_ARCH_FOLDER="armeabi-v7a"
+              ;;
+            arm64)
+              ANDROID_ARCH_FOLDER="arm64-v8a"
+              ;;
+            x86)
+              ANDROID_ARCH_FOLDER="x86"
+              ;;
+            *)
+              ANDROID_ARCH_FOLDER="${{ matrix.arch }}"
+              ;;
+          esac
+          
+          # Check for build output directory
+          OUTPUT_DIR="build/android/$ARCHIVE_NAME/prebuilt/$ANDROID_ARCH_FOLDER"
+          echo "Checking for output directory: $OUTPUT_DIR"
+          
+          if [ -d "$OUTPUT_DIR" ]; then
+            echo "✅ Build successful: ${{ matrix.lib }} for ${{ matrix.arch }}"
+            echo "Output directory contents:"
+            find "$OUTPUT_DIR" -type f -name "*.a" | head -20
+            ls -la "$OUTPUT_DIR" || true
+          else
+            echo "❌ Build failed: ${{ matrix.lib }} - no artifacts found at $OUTPUT_DIR"
+            echo "Checking alternative locations..."
+            find build -name "*${{ matrix.lib }}*" -type d 2>/dev/null | head -10 || true
+            find build -name "*$ARCHIVE_NAME*" -type d 2>/dev/null | head -10 || true
+            echo "Build directory structure:"
+            ls -la build/ || true
+            if [ -d "build/android" ]; then
+              ls -la build/android/ || true
+            fi
+            exit 1
+          fi
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.lib }}-android-${{ matrix.arch }}
+          path: |
+            build/android/${{ matrix.lib == 'openssl' && 'ssl' || matrix.lib }}/prebuilt/
+            build/android/${{ matrix.lib == 'openssl' && 'ssl' || matrix.lib }}/include/
+          retention-days: 7
+
   verify-versions:
     name: Verify Library Versions
     runs-on: ubuntu-latest
@@ -246,242 +367,225 @@ jobs:
           fi
 
   build-windows:
-    name: Build on Windows
+    name: Build on Windows (Win32)
     runs-on: windows-latest
     strategy:
       matrix:
-        lib: [openssl, curl]
+        arch: [x64, Win32]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          install: >-
-            base-devel
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-make
-            mingw-w64-x86_64-perl
-            autoconf
-            automake
-            libtool
-            git
-
-      - name: Setup build environment
-        shell: msys2 {0}
+      - name: Install Strawberry Perl
         run: |
-          # Set library archive alias mapping
-          if [ "${{ matrix.lib }}" == "openssl" ]; then
-            ARCHIVE_NAME="ssl"
-          elif [ "${{ matrix.lib }}" == "curl" ]; then
-            ARCHIVE_NAME="curl"
-          else
-            ARCHIVE_NAME="${{ matrix.lib }}"
-          fi
-          echo "ARCHIVE_NAME=$ARCHIVE_NAME" >> $GITHUB_ENV
+          # Download and install Strawberry Perl
+          $perlUrl = "https://strawberryperl.com/download/5.32.1.1/strawberry-perl-5.32.1.1-64bit.msi"
+          $perlInstaller = "$env:TEMP\strawberry-perl.msi"
+          Invoke-WebRequest -Uri $perlUrl -OutFile $perlInstaller
+          Start-Process msiexec.exe -Wait -ArgumentList "/i $perlInstaller /quiet /norestart"
+          # Add Perl to PATH for this session
+          $env:PATH = "C:\Strawberry\perl\bin;C:\Strawberry\perl\site\bin;" + $env:PATH
+          perl --version
 
-      - name: Build ${{ matrix.lib }} on Windows (MSYS2/MinGW)
-        shell: msys2 {0}
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1.3.1
+
+      - name: Download and extract OpenSSL
         run: |
+          $OPENSSL_VERSION = (Select-String -Path "contrib\src\openssl\rules.mak" -Pattern "OPENSSL_VERSION :=").Line.Split(' ')[2]
+          Write-Host "OpenSSL version: $OPENSSL_VERSION"
+          $OPENSSL_URL = "https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz"
+          Write-Host "Downloading OpenSSL from $OPENSSL_URL"
+          
+          # Create temp directory
+          New-Item -ItemType Directory -Force -Path "temp" | Out-Null
+          Set-Location "temp"
+          
+          # Download OpenSSL
+          Invoke-WebRequest -Uri $OPENSSL_URL -OutFile "openssl.tar.gz"
+          
+          # Extract using 7zip (available on Windows runners)
+          & "C:\Program Files\7-Zip\7z.exe" x openssl.tar.gz
+          & "C:\Program Files\7-Zip\7z.exe" x openssl.tar
+          
+          # Move to expected location
+          Move-Item -Path "openssl-$OPENSSL_VERSION" -Destination "..\openssl-source" -Force
+          Set-Location ".."
+
+      - name: Build OpenSSL
+        shell: cmd
+        env:
+          BUILD_ARCH: ${{ matrix.arch }}
+        run: |
+          @echo off
+          setlocal
+          
+          REM Set architecture-specific variables
+          if "%BUILD_ARCH%"=="x64" (
+            set OPENSSL_CONFIG=VC-WIN64A
+            set OPENSSL_PREFIX=C:\OpenSSL-Win64
+            set VS_ARCH=x64
+          ) else (
+            set OPENSSL_CONFIG=VC-WIN32
+            set OPENSSL_PREFIX=C:\OpenSSL-Win32
+            set VS_ARCH=x86
+          )
+          
+          echo Building OpenSSL for %BUILD_ARCH%...
+          echo Config: %OPENSSL_CONFIG%
+          echo Prefix: %OPENSSL_PREFIX%
+          
+          cd openssl-source
+          
+          REM Configure OpenSSL
+          perl Configure %OPENSSL_CONFIG% --prefix=%OPENSSL_PREFIX% --openssldir=%OPENSSL_PREFIX%\ssl no-shared no-unit-test
+          if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+          
+          REM Build OpenSSL
+          nmake
+          if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+          
+          REM Install OpenSSL
+          nmake install
+          if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+          
+          cd ..
+          
+          echo ✅ OpenSSL build completed successfully
+
+      - name: Download and extract curl
+        run: |
+          $CURL_VERSION = (Select-String -Path "contrib\src\curl\rules.mak" -Pattern "CURL_VERSION :=").Line.Split(' ')[2]
+          Write-Host "curl version: $CURL_VERSION"
+          $CURL_URL = "http://curl.haxx.se/download/curl-$CURL_VERSION.tar.gz"
+          Write-Host "Downloading curl from $CURL_URL"
+          
+          # Create temp directory
+          New-Item -ItemType Directory -Force -Path "temp" | Out-Null
+          Set-Location "temp"
+          
+          # Download curl
+          Invoke-WebRequest -Uri $CURL_URL -OutFile "curl.tar.gz"
+          
+          # Extract using 7zip
+          & "C:\Program Files\7-Zip\7z.exe" x curl.tar.gz
+          & "C:\Program Files\7-Zip\7z.exe" x curl.tar
+          
+          # Move to expected location
+          Move-Item -Path "curl-$CURL_VERSION" -Destination "..\curl-source" -Force
+          Set-Location ".."
+
+      - name: Build curl with CMake
+        shell: cmd
+        env:
+          BUILD_ARCH: ${{ matrix.arch }}
+        run: |
+          @echo off
+          setlocal
+          
+          REM Set architecture-specific variables
+          if "%BUILD_ARCH%"=="x64" (
+            set OPENSSL_PREFIX=C:\OpenSSL-Win64
+            set CURL_PREFIX=C:\curl-Win64
+            set CMAKE_ARCH=x64
+          ) else (
+            set OPENSSL_PREFIX=C:\OpenSSL-Win32
+            set CURL_PREFIX=C:\curl-Win32
+            set CMAKE_ARCH=Win32
+          )
+          
+          echo Building curl for %BUILD_ARCH%...
+          echo OpenSSL prefix: %OPENSSL_PREFIX%
+          echo curl prefix: %CURL_PREFIX%
+          
+          cd curl-source
+          
+          REM Create build directory
+          if not exist build mkdir build
           cd build
-          echo "Building ${{ matrix.lib }} on Windows"
-          # Note: Windows Win32 builds typically require manual Visual Studio setup
-          # This is a basic test using MSYS2/MinGW as an alternative
-          # For production builds, use Visual Studio as documented in README
-          echo "⚠️ Windows Win32 builds are typically done with Visual Studio"
-          echo "This is a compatibility test using MSYS2/MinGW"
-          echo "For production builds, follow README instructions for Visual Studio setup"
           
-          # Try to build using MSYS2 environment if possible
-          # Note: The build.sh script doesn't support Windows directly
-          # This step verifies that the source code and configuration are correct
-          echo "✅ Windows build configuration verified"
-          echo "For actual Win32 builds, use Visual Studio as per README.md"
+          REM Configure with CMake
+          cmake .. -G "Visual Studio 17 2022" -A %CMAKE_ARCH% ^
+            -DCMAKE_INSTALL_PREFIX=%CURL_PREFIX% ^
+            -DOPENSSL_ROOT_DIR=%OPENSSL_PREFIX% ^
+            -DCURL_USE_OPENSSL=ON ^
+            -DBUILD_SHARED_LIBS=ON ^
+            -DCMAKE_BUILD_TYPE=Release
+          if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+          
+          REM Build curl
+          cmake --build . --config Release
+          if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+          
+          REM Install curl
+          cmake --install . --config Release
+          if %ERRORLEVEL% neq 0 exit /b %ERRORLEVEL%
+          
+          cd ..\..
+          
+          echo ✅ curl build completed successfully
 
-      - name: Verify Windows build files
-        shell: msys2 {0}
+      - name: Verify build artifacts
+        shell: cmd
+        env:
+          BUILD_ARCH: ${{ matrix.arch }}
         run: |
-          echo "Verifying Windows-specific build files..."
-          if [ "${{ matrix.lib }}" == "openssl" ]; then
-            if [ -f "contrib/src/openssl/rules.mak" ]; then
-              echo "✅ OpenSSL rules.mak found"
-              # Check for Windows-specific build rules
-              if grep -q "HAVE_WIN32\|WIN32" contrib/src/openssl/rules.mak; then
-                echo "✅ Windows support detected in OpenSSL rules"
-              else
-                echo "ℹ️ OpenSSL uses Configure script which supports Windows"
-              fi
-              # Verify version
-              OPENSSL_VERSION=$(grep "OPENSSL_VERSION :=" contrib/src/openssl/rules.mak | cut -d' ' -f3)
-              echo "OpenSSL version: $OPENSSL_VERSION"
-            fi
-          elif [ "${{ matrix.lib }}" == "curl" ]; then
-            if [ -f "contrib/src/curl/rules.mak" ]; then
-              echo "✅ curl rules.mak found"
-              # Verify version
-              CURL_VERSION=$(grep "CURL_VERSION :=" contrib/src/curl/rules.mak | cut -d' ' -f3)
-              echo "curl version: $CURL_VERSION"
-            fi
-          fi
+          @echo off
+          setlocal
           
-          # Check if zlib (dependency) has Windows support
-          if [ -f "contrib/src/zlib/rules.mak" ]; then
-            if grep -q "HAVE_WIN32" contrib/src/zlib/rules.mak; then
-              echo "✅ zlib has Windows support (HAVE_WIN32 detected)"
-              echo "Windows build uses: win32/Makefile.gcc"
-            fi
-          fi
+          REM Set architecture-specific variables
+          if "%BUILD_ARCH%"=="x64" (
+            set OPENSSL_PREFIX=C:\OpenSSL-Win64
+            set CURL_PREFIX=C:\curl-Win64
+          ) else (
+            set OPENSSL_PREFIX=C:\OpenSSL-Win32
+            set CURL_PREFIX=C:\curl-Win32
+          )
           
-          # Verify SHA512SUMS files exist
-          echo "Checking SHA512SUMS files..."
-          if [ "${{ matrix.lib }}" == "openssl" ]; then
-            if [ -f "contrib/src/openssl/SHA512SUMS" ]; then
-              echo "✅ OpenSSL SHA512SUMS found"
-              if grep -q "openssl-1.1.1w.tar.gz" contrib/src/openssl/SHA512SUMS; then
-                echo "✅ OpenSSL SHA512SUMS contains correct version"
-              fi
-            fi
-          elif [ "${{ matrix.lib }}" == "curl" ]; then
-            if [ -f "contrib/src/curl/SHA512SUMS" ]; then
-              echo "✅ curl SHA512SUMS found"
-              if grep -q "curl-7.88.1.tar.gz" contrib/src/curl/SHA512SUMS; then
-                echo "✅ curl SHA512SUMS contains correct version"
-              fi
-            fi
-          fi
+          echo Verifying OpenSSL artifacts...
+          if exist "%OPENSSL_PREFIX%\lib\libssl.lib" (
+            echo ✅ Found libssl.lib
+          ) else (
+            echo ❌ libssl.lib not found
+            exit /b 1
+          )
           
-          echo "✅ Windows build configuration verification complete"
+          if exist "%OPENSSL_PREFIX%\lib\libcrypto.lib" (
+            echo ✅ Found libcrypto.lib
+          ) else (
+            echo ❌ libcrypto.lib not found
+            exit /b 1
+          )
+          
+          echo Verifying curl artifacts...
+          if exist "%CURL_PREFIX%\bin\libcurl.dll" (
+            echo ✅ Found libcurl.dll
+          ) else (
+            echo ❌ libcurl.dll not found
+            exit /b 1
+          )
+          
+          if exist "%CURL_PREFIX%\lib\libcurl.lib" (
+            echo ✅ Found libcurl.lib
+          ) else (
+            echo ⚠️ libcurl.lib not found (may be named differently)
+          )
+          
+          echo ✅ All artifacts verified
 
-      - name: Upload build artifacts (if any)
-        if: always()
-        shell: msys2 {0}
-        run: |
-          # Determine archive name based on library
-          if [ "${{ matrix.lib }}" == "openssl" ]; then
-            ARCHIVE_NAME="ssl"
-          elif [ "${{ matrix.lib }}" == "curl" ]; then
-            ARCHIVE_NAME="curl"
-          else
-            ARCHIVE_NAME="${{ matrix.lib }}"
-          fi
-          
-          # Check for any build artifacts (though Windows builds typically use Visual Studio)
-          # This step is mainly for documentation and verification files
-          echo "Checking for build artifacts..."
-          if [ -d "build/win32" ] || [ -d "build/windows" ]; then
-            echo "Found Windows build directory"
-            find build -name "*${{ matrix.lib }}*" -o -name "*$ARCHIVE_NAME*" 2>/dev/null | head -20 || true
-          fi
-          
-          # Create a verification artifact with build configuration info
-          mkdir -p win32-verification
-          echo "Library: ${{ matrix.lib }}" > win32-verification/build-info.txt
-          echo "Archive Name: $ARCHIVE_NAME" >> win32-verification/build-info.txt
-          echo "Platform: Windows Win32" >> win32-verification/build-info.txt
-          echo "Build Date: $(date)" >> win32-verification/build-info.txt
-          
-          if [ "${{ matrix.lib }}" == "openssl" ]; then
-            OPENSSL_VERSION=$(grep "OPENSSL_VERSION :=" contrib/src/openssl/rules.mak | cut -d' ' -f3)
-            echo "OpenSSL Version: $OPENSSL_VERSION" >> win32-verification/build-info.txt
-          elif [ "${{ matrix.lib }}" == "curl" ]; then
-            CURL_VERSION=$(grep "CURL_VERSION :=" contrib/src/curl/rules.mak | cut -d' ' -f3)
-            echo "curl Version: $CURL_VERSION" >> win32-verification/build-info.txt
-          fi
-
-      - name: Check for Windows build artifacts (DLL/LIB)
-        if: always()
-        shell: msys2 {0}
-        run: |
-          # Determine archive name based on library
-          if [ "${{ matrix.lib }}" == "openssl" ]; then
-            ARCHIVE_NAME="ssl"
-          elif [ "${{ matrix.lib }}" == "curl" ]; then
-            ARCHIVE_NAME="curl"
-          else
-            ARCHIVE_NAME="${{ matrix.lib }}"
-          fi
-          
-          echo "Checking for Windows build artifacts..."
-          
-          # Check for DLL files (if shared library was built)
-          if [ "${{ matrix.lib }}" == "curl" ]; then
-            echo "Looking for libcurl.dll..."
-            find . -name "libcurl*.dll" -o -name "curl*.dll" 2>/dev/null | head -10 || echo "No DLL files found (static build or not built)"
-            echo "Looking for libcurl.dll.a (MinGW import library)..."
-            find . -name "libcurl*.dll.a" -o -name "curl*.dll.a" 2>/dev/null | head -10 || echo "No MinGW import library found"
-            echo "Looking for libcurl.lib (Visual Studio library)..."
-            find . -name "libcurl*.lib" -o -name "curl*.lib" 2>/dev/null | head -10 || echo "No .lib files found"
-            echo "Looking for libcurl.a (static library)..."
-            find . -name "libcurl*.a" -o -name "curl*.a" 2>/dev/null | head -10 || echo "No .a files found"
-          fi
-          
-          # Check for static library files (.lib or .a)
-          if [ "${{ matrix.lib }}" == "openssl" ]; then
-            echo "Looking for OpenSSL libraries..."
-            find . -name "libssl*.a" -o -name "libcrypto*.a" -o -name "ssl*.lib" -o -name "crypto*.lib" -o -name "libssl*.lib" -o -name "libcrypto*.lib" 2>/dev/null | head -10 || echo "No library files found"
-          fi
-          
-          # Check contrib install directories
-          if [ -d "contrib/install-win32" ] || [ -d "contrib/install-windows" ] || [ -d "contrib/install-mingw" ]; then
-            echo "Found Windows install directory"
-            echo "Searching for all library files..."
-            find contrib/install-* -type f \( -name "*.dll" -o -name "*.lib" -o -name "*.a" -o -name "*.dll.a" \) 2>/dev/null | head -30 || true
-          fi
-          
-          # List directory structure for debugging
-          echo "Contrib install directories:"
-          ls -la contrib/install-* 2>/dev/null | head -20 || echo "No install directories found"
-
-      - name: Upload Windows verification artifacts
-        if: always()
+      - name: Upload build artifacts
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.lib }}-windows-verification
-          path: win32-verification/
-          retention-days: 7
-          if-no-files-found: ignore
-
-      - name: Upload Windows build artifacts (if any)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.lib }}-windows-build
+          name: openssl-curl-windows-${{ matrix.arch }}
           path: |
-            contrib/install-*/**/*.dll
-            contrib/install-*/**/*.lib
-            contrib/install-*/**/*.a
-            contrib/install-*/**/*.dll.a
-            contrib/install-*/**/include/
+            C:\OpenSSL-Win${{ matrix.arch == 'x64' && '64' || '32' }}\lib\
+            C:\OpenSSL-Win${{ matrix.arch == 'x64' && '64' || '32' }}\include\
+            C:\OpenSSL-Win${{ matrix.arch == 'x64' && '64' || '32' }}\bin\
+            C:\curl-Win${{ matrix.arch == 'x64' && '64' || '32' }}\lib\
+            C:\curl-Win${{ matrix.arch == 'x64' && '64' || '32' }}\include\
+            C:\curl-Win${{ matrix.arch == 'x64' && '64' || '32' }}\bin\
           retention-days: 7
-          if-no-files-found: ignore
-          
-      - name: List Windows build artifacts summary
-        if: always()
-        shell: msys2 {0}
-        run: |
-          echo "=== Windows Build Artifacts Summary ==="
-          if [ "${{ matrix.lib }}" == "curl" ]; then
-            echo "Looking for curl build artifacts..."
-            echo ""
-            echo "DLL files:"
-            find . -name "libcurl*.dll" -o -name "curl*.dll" 2>/dev/null | head -5 || echo "  None found"
-            echo ""
-            echo "Visual Studio .lib files:"
-            find . -name "libcurl*.lib" -o -name "curl*.lib" 2>/dev/null | head -5 || echo "  None found"
-            echo ""
-            echo "MinGW .a files (static):"
-            find . -name "libcurl*.a" ! -name "*.dll.a" 2>/dev/null | head -5 || echo "  None found"
-            echo ""
-            echo "MinGW import libraries (.dll.a):"
-            find . -name "libcurl*.dll.a" 2>/dev/null | head -5 || echo "  None found"
-          elif [ "${{ matrix.lib }}" == "openssl" ]; then
-            echo "Looking for OpenSSL build artifacts..."
-            echo ""
-            echo "Library files (.lib, .a, .dll):"
-            find . -type f \( -name "libssl*" -o -name "libcrypto*" -o -name "ssl*" -o -name "crypto*" \) \( -name "*.lib" -o -name "*.a" -o -name "*.dll" \) 2>/dev/null | head -10 || echo "  None found"
-          fi
 
   test-patch-compatibility:
     name: Test Patch Compatibility

@@ -86,6 +86,8 @@ header files are missing, please check the README file of the 3rd libs. In gener
 build the static libs for Windows. Some libs also provide a CMakeLists.txt file, you could use CMake GUI tool to generate
 a static library project. Don't forgt to Google the error messages when you can't compile the libs successfully.
 
+**For detailed instructions on building OpenSSL and curl for Win32, see [docs/BUILD_WIN32.md](docs/BUILD_WIN32.md).**
+
 ### For Tizen Users
 To build static libraries for Tizen, you should install Tizen Studio at first. At the time of writing, the latest version of Tizen Studio is v1.1.0, you could download it from
 [here](https://developer.tizen.org/development/tizen-studio/download?langswitch=en).

@@ -13,9 +13,7 @@ curl: curl-$(CURL_VERSION).tar.gz .sum-curl
 	$(UPDATE_AUTOCONFIG)
 	$(MOVE)
 
-DEPS_curl = zlib $(DEPS_zlib)
-
-DEPS_curl = openssl $(DEPS_openssl)
+DEPS_curl = zlib $(DEPS_zlib) openssl $(DEPS_openssl)
 
 ifdef HAVE_LINUX
 configure_option=--without-libidn --without-librtmp
@@ -36,7 +34,7 @@ endif
 
 .curl: curl .zlib .openssl
 	$(RECONF)
-	cd $< && $(HOSTVARS_PIC) ./configure $(HOSTCONF) \
+	cd $< && $(HOSTVARS_PIC) PKG_CONFIG_LIBDIR="$(PREFIX)/lib/pkgconfig" ./configure $(HOSTCONF) \
 		--with-ssl=$(PREFIX) \
 		--with-zlib \
 		--enable-ipv6 \

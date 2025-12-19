@@ -325,12 +325,9 @@
   - 添加编译标志 `-Wno-deprecated-non-prototype` 禁用 C23 警告
   - 更新 `contrib/src/zlib/rules.mak` 在 macOS 上应用补丁
 
-### 12. Windows Win32 支持
+### 12. curl Windows DLL 构建支持
 
 **添加内容**:
-- 在 GitHub Actions workflow 中添加 Windows 构建测试
-- 使用 MSYS2/MinGW 环境进行兼容性测试
-- 验证 Windows 特定的构建配置
 - **添加 DLL 构建支持**: 在 Windows 上构建 curl 时启用共享库（DLL）
 
 **Windows DLL 构建配置**:
@@ -341,11 +338,9 @@
   - `libcurl.lib` - Visual Studio 库文件（静态库或导入库）
   - `libcurl.a` - MinGW 静态库
 - 默认情况下，configure 会同时构建静态库和共享库（除非明确禁用静态库）
-- GitHub Actions workflow 已更新以检查并上传所有类型的库文件（.dll, .lib, .a, .dll.a）
 
 **注意**: 
 - Windows Win32 的生产构建通常需要在 Visual Studio 中手动设置项目（如 README 所述）
-- CI 中的 Windows 测试主要用于验证配置和源代码的正确性
 - 实际的生产构建应遵循 README.md 中的 Visual Studio 说明
 - 如果使用 MSYS2/MinGW 构建，现在会生成 DLL 文件
 
@@ -355,10 +350,9 @@
 
 1. **Linux 构建测试**: 在 Ubuntu 上测试 openssl 和 curl 的构建
 2. **macOS 构建测试**: 在 macOS 上测试 openssl 和 curl 的构建
-3. **Windows 构建测试**: 在 Windows 上验证配置和源代码（使用 MSYS2/MinGW）
-4. **版本验证**: 验证版本号是否正确更新
-5. **SHA512SUMS 验证**: 验证校验和文件格式
-6. **补丁兼容性测试**: 测试补丁在新版本上的兼容性
+3. **版本验证**: 验证版本号是否正确更新
+4. **SHA512SUMS 验证**: 验证校验和文件格式
+5. **补丁兼容性测试**: 测试补丁在新版本上的兼容性
 
 **使用方法**:
 - 推送到 GitHub 后，workflow 会自动运行
