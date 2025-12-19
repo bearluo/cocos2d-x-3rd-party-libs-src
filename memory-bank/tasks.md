@@ -313,13 +313,15 @@
 ### 11. zlib macOS 兼容性修复
 
 **问题**: zlib 1.2.8 在 Xcode 16.4+ 和 macOS SDK 15.5+ 上编译失败
-- **错误**: `fdopen` 宏定义导致语法错误
-  - 错误信息: `fdopen(fd,mode) NULL` 在新版本 C 标准中导致语法错误
+- **错误**: `fdopen` 宏定义与系统头文件中的 `fdopen` 函数声明冲突
+  - 错误信息: 宏定义 `fdopen(fd,mode) ((FILE *)0)` 与 `<stdio.h>` 中的 `FILE *fdopen(int, const char *)` 函数声明冲突
+  - 根本原因: macOS 系统已经提供了 `fdopen` 函数，不需要定义宏
 - **修复**: 
-  - 创建补丁 `contrib/src/zlib/macos-fdopen-fix.patch` 修复宏定义
-    - 将 `#define fdopen(fd,mode) NULL` 改为 `#define fdopen(fd,mode) ((FILE *)0)`
+  - 创建补丁 `contrib/src/zlib/macos-fdopen-fix.patch` 移除宏定义
+    - 完全移除 `#ifndef fdopen` 块中的宏定义
+    - macOS 系统已经提供了 `fdopen` 函数，不需要定义宏
     - 修复了补丁上下文，确保正确匹配源代码（第 125-133 行）
-    - ✅ 补丁已测试并验证可以成功应用
+    - ⚠️ 需要重新测试补丁应用
   - 添加编译标志 `-Wno-deprecated-non-prototype` 禁用 C23 警告
   - 更新 `contrib/src/zlib/rules.mak` 在 macOS 上应用补丁
 

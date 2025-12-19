@@ -1,13 +1,13 @@
 --- a/zutil.h
 +++ b/zutil.h
-@@ -125,9 +125,9 @@
+@@ -125,9 +125,8 @@
  #    if defined(__MWERKS__) && __dest_os != __be_os && __dest_os != __win32_os
  #      include <unix.h> /* for fdopen */
  #    else
- #      ifndef fdopen
+-#      ifndef fdopen
 -#        define fdopen(fd,mode) NULL /* No fdopen() */
-+#        define fdopen(fd,mode) ((FILE *)0) /* No fdopen() */
- #      endif
+-#      endif
++      /* macOS provides fdopen() in stdio.h, so no macro definition needed */
  #    endif
  #  endif
  #endif
